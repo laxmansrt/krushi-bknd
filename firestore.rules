@@ -1,0 +1,81 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper Functions ──
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // ── Users Collection ──
+    match /users/{userId} {
+      // Anyone can read user profiles (for owner info on equipment cards)
+      allow read: if isAuthenticated();
+
+      // Users can only create/update their own profile
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+
+      // No one can delete user profiles
+      allow delete: if false;
+    }
+
+    // ── Equipment Collection ──
+    match /equipment/{equipmentId} {
+      // Anyone authenticated can read equipment listings
+      allow read: if isAuthenticated();
+
+      // Only the owner can create equipment
+      allow create: if isAuthenticated()
+        && request.resource.data.ownerId == request.auth.uid;
+
+      // Only the owner can update their equipment
+      allow update: if isAuthenticated()
+        && resource.data.ownerId == request.auth.uid;
+
+      // Only the owner can delete their listing
+      allow delete: if isAuthenticated()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
+    // ── Bookings Collection ──
+    match /bookings/{bookingId} {
+      // Renter and Owner can read their bookings
+      allow read: if isAuthenticated()
+        && (resource.data.renterId == request.auth.uid
+            || resource.data.ownerId == request.auth.uid);
+
+      // Authenticated renters can create bookings
+      allow create: if isAuthenticated()
+        && request.resource.data.renterId == request.auth.uid;
+
+      // Owner can update booking status (accept/decline)
+      // Renter can update payment info
+      allow update: if isAuthenticated()
+        && (resource.data.ownerId == request.auth.uid
+            || resource.data.renterId == request.auth.uid);
+
+      // No deletion of booking records
+      allow delete: if false;
+    }
+
+    // ── Reviews Collection ──
+    match /reviews/{reviewId} {
+      // Anyone authenticated can read reviews
+      allow read: if isAuthenticated();
+
+      // Only authenticated users can create reviews
+      allow create: if isAuthenticated()
+        && request.resource.data.reviewerId == request.auth.uid;
+
+      // Reviews cannot be edited or deleted
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
